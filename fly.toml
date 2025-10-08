@@ -1,4 +1,4 @@
-# fly.toml app configuration file generated for gastos-api on 2025-10-07T18:00:53-03:00
+# fly.toml app configuration file generated for gastos-api on 2025-10-08T11:38:41-03:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -7,7 +7,6 @@ app = 'gastos-api'
 primary_region = 'gru'
 
 [build]
-  builder = 'paketobuildpacks/builder:base'
 
 [env]
   PORT = '8080'
@@ -21,6 +20,6 @@ primary_region = 'gru'
   processes = ['app']
 
 [[vm]]
-  memory = '1gb'
+  memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
