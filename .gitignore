@@ -1,0 +1,17 @@
+
+venv/
+.env
+*.env
+tks.env
+
+*.db
+
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.tar.gz
+
+*.json
+
+.vscode/
