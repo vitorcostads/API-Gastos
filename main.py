@@ -65,9 +65,13 @@ def receber_notificacao():
     app_origem = data.get("app", "")
     data_envio = data.get("data", datetime.now().isoformat()).split('.')[0]
     
-    if "Compra aprovada" not in titulo:
-        print(f"Ignorado: título '{titulo}' não é de compra aprovada.", flush=True)
-        return jsonify({"status": "ignorado", "motivo": "Título não corresponde a compra aprovada"}), 200
+    if "Compra" not in titulo :
+        print(f"Ignorado: título '{titulo}' não é uma compra aprovada.", flush=True)
+        return jsonify({"status": "ignorado", "motivo": "Título não corresponde a compra"}), 200
+
+    if "Recusada" in titulo :
+        print(f"Ignorado: título '{titulo}' não é uma compra recusada.", flush=True)
+        return jsonify({"status": "ignorado", "motivo": "Titulo de compra recusada"}), 200
 
 
     usuario = user(app_origem)
