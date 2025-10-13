@@ -6,20 +6,31 @@ import sqlite3
 # Desativa buffering globalmente (para log ao vivo no Fly)
 sys.stdout.reconfigure(line_buffering=True)
 
-# Caminho do banco de dados (volume persistente)
 DB_PATH = "/data/Gasto.db"
 
-# --- Funções auxiliares ---
+app = Flask(__name__)
 
+# Conexao com banco de dados
 def conectar():
     os.makedirs("/data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    return conn
+    return sqlite3.connect(DB_PATH)
+
+# Identifica o usuário com base no app.
+def user(datau: str) -> str:
+    mapping = {
+        "com.nu.production": "Pessoal",
+        "br.com.intermedium": "Conjunto"
+        
+    }
+    return mapping.get(datau, datau)
+
 
 def criar_ou_atualizar_tabela():
-    """Garante que a tabela exista e que possua a coluna 'usuario'."""
+    """Cria tabelas, se ainda não existirem."""
     with conectar() as conn:
         cur = conn.cursor()
+
+        # Tabela principal de gastos
         cur.execute("""
         CREATE TABLE IF NOT EXISTS Gastos (
             data TEXT,
@@ -29,26 +40,57 @@ def criar_ou_atualizar_tabela():
             usuario TEXT
         )
         """)
-        # Verifica colunas
-        cur.execute("PRAGMA table_info(Gastos);")
-        colunas = [row[1] for row in cur.fetchall()]
-        # Adiciona coluna 'usuario' se não existir
-        if "usuario" not in colunas:
-            cur.execute("ALTER TABLE Gastos ADD COLUMN usuario TEXT;")
-            cur.execute("UPDATE Gastos SET usuario = 'Pessoal';")
+
+        # Tabela de categorias com mapeamento de palavras-chave
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS Categorias (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            palavra_chave TEXT UNIQUE,
+            categoria TEXT
+        )
+        """)
+
         conn.commit()
 
-def user(datau: str) -> str:
-    """Mapeia app para usuário."""
-    mapping = {
-        "com.nu.production": "Pessoal",
-        "br.com.intermedium": "Conjunto"
-    }
-    return mapping.get(datau, datau)
+# CATEGORIZAÇÃO AUTOMÁTICA
+
+def identificar_categoria(descricao):
+    """
+    Identifica a categoria de um gasto com base na descrição.
+    Se não houver correspondência, cria uma nova categoria automaticamente.
+    """
+    descricao_lower = descricao.lower()
+    with conectar() as conn:
+        cur = conn.cursor()
+
+        # Busca categorias existentes
+        cur.execute("SELECT palavra_chave, categoria FROM Categorias")
+        categorias = cur.fetchall()
+
+        # Tenta encontrar uma correspondência
+        for palavra, cat in categorias:
+            if palavra.lower() in descricao_lower:
+                return cat
+
+        # Se não encontrou, cria uma nova categoria baseada na descrição
+        nova_cat = descricao.strip().title() 
+        try:
+            cur.execute("""
+                INSERT OR IGNORE INTO Categorias (palavra_chave, categoria)
+                VALUES (?, ?)
+            """, (nova_cat.lower(), nova_cat))
+            conn.commit()
+            print(f"Nova categoria criada: {nova_cat}", flush=True)
+        except Exception as e:
+            print(f"Erro ao criar nova categoria: {e}", flush=True)
+
+        return nova_cat
+
+
 
 # --- Inicialização ---
-app = Flask(__name__)
-criar_ou_atualizar_tabela()
+
+
 
 @app.route('/')
 def home():
@@ -70,7 +112,7 @@ def receber_notificacao():
         return jsonify({"status": "ignorado", "motivo": "Título não corresponde a compra"}), 200
 
     if "Recusada" in titulo :
-        print(f"Ignorado: título '{titulo}' não é uma compra recusada.", flush=True)
+        print(f"Ignorado: título '{titulo}' é uma compra recusada.", flush=True)
         return jsonify({"status": "ignorado", "motivo": "Titulo de compra recusada"}), 200
 
 
@@ -83,10 +125,13 @@ def receber_notificacao():
     # Extrai o local (palavra após "em")
     padrao_local = re.search(r"em ([A-Z0-9\s]+?)(?:\.|,|\*|$)", mensagem)
     descricao = padrao_local.group(1).strip() if padrao_local else "Nao identificado"
+    
+    # Identifica (ou cria) categoria com base na descrição
+    categoria = identificar_categoria(descricao)
 
     registro = {
         "data": data_envio,
-        "categoria": None,  # definiremos depois via lógica inteligente
+        "categoria": categoria,
         "valor": valor,
         "descricao": descricao,
         "usuario": usuario
@@ -125,4 +170,6 @@ def receber_notificacao():
 
 
 if __name__ == '__main__':
+    criar_ou_atualizar_tabela()
     app.run(host='0.0.0.0', port=8080)
+    
