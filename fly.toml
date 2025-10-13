@@ -1,25 +1,26 @@
-# fly.toml app configuration file generated for gastos-api on 2025-10-08T11:38:41-03:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'gastos-api'
-primary_region = 'gru'
+# fly.toml app configuration file for gastos-api
+app = "gastos-api"
+primary_region = "gru"
 
 [build]
 
 [env]
-  PORT = '8080'
+  PORT = "8080"
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
+  auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
-  processes = ['app']
+  processes = ["app"]
 
 [[vm]]
-  memory = '512mb'
-  cpu_kind = 'shared'
+  memory = "512mb"
+  cpu_kind = "shared"
   cpus = 1
+
+
+[mounts]
+  source = "gastodb"
+  destination = "/data"
