@@ -1,2 +1,13 @@
-fly.toml
+.git
 .venv
+venv
+env
+__pycache__/
+*.pyc
+*.log
+*.csv
+*.sqlite3
+*.db
+/data/
+.streamlit/
+.DS_Store

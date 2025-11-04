@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import sys, re, os
+import sys, re, os, unicodedata
 from datetime import datetime
 import sqlite3
 
@@ -10,10 +10,13 @@ DB_PATH = "/data/Gasto.db"
 
 app = Flask(__name__)
 
-# Conexao com banco de dados
+# Conexao BD
 def conectar():
     os.makedirs("/data", exist_ok=True)
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=3000;")
+    return conn
 
 # Identifica o usuário com base no app.
 def user(datau: str) -> str:
@@ -49,19 +52,37 @@ def criar_ou_atualizar_tabela():
             categoria TEXT
         )
         """)
-
+        cur.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_categoria_delete
+            AFTER DELETE ON Categorias
+            BEGIN
+            UPDATE Gastos
+            SET categoria = 'VERIFICAR'
+            WHERE categoria = OLD.categoria;
+            END;
+            """)
         conn.commit()
+
+criar_ou_atualizar_tabela()
 
 # CATEGORIZAÇÃO AUTOMÁTICA
 
-def identificar_categoria(descricao):
-    """
-    Identifica a categoria de um gasto com base na descrição.
-    Se não houver correspondência, cria uma nova categoria automaticamente.
-    """
+def _tamanho_util(txt: str) -> int:
+    if not txt:
+        return 0
+    return sum(ch.isalnum() for ch in txt)
+
+
+def identificar_categoria(descricao):    
+    # Identifica a categoria de um gasto com base na descrição.
+    # Se não houver correspondência, cria uma nova categoria automaticamente.
+    
     descricao_lower = descricao.lower()
     with conectar() as conn:
         cur = conn.cursor()
+        
+        if _tamanho_util(descricao) < 4:
+            return "VERIFICAR"        
 
         # Busca categorias existentes
         cur.execute("SELECT palavra_chave, categoria FROM Categorias")
@@ -69,8 +90,9 @@ def identificar_categoria(descricao):
 
         # Tenta encontrar uma correspondência
         for palavra, cat in categorias:
-            if palavra.lower() in descricao_lower:
+            if palavra.lower() in descricao_lower: 
                 return cat
+
 
         # Se não encontrou, cria uma nova categoria baseada na descrição
         nova_cat = descricao.strip().title() 
@@ -87,14 +109,14 @@ def identificar_categoria(descricao):
         return nova_cat
 
 
-
-# --- Inicialização ---
-
-
-
 @app.route('/')
 def home():
     return "API Gastos online"
+
+# @app.route('/dashboard')
+# def dashboard():
+#     # Redireciona para o Streamlit (ajuste a URL se mudar a porta)
+#     return redirect("")
 
 @app.route('/notificacaos', methods=['POST'])
 def receber_notificacao():
@@ -105,7 +127,7 @@ def receber_notificacao():
     titulo = data.get ("titulo", "")
     mensagem = data.get("mensagem", "")   
     app_origem = data.get("app", "")
-    data_envio = data.get("data", datetime.now().isoformat()).split('.')[0]
+    data_envio = data.get("data", datetime.now().isoformat()).split('.')[0].replace('T', ' ')
     
     if "Compra" not in titulo :
         print(f"Ignorado: título '{titulo}' não é uma compra aprovada.", flush=True)
@@ -123,7 +145,7 @@ def receber_notificacao():
     valor = float(padrao_valor.group(1).replace(".", "").replace(",", ".")) if padrao_valor else None
 
     # Extrai o local (palavra após "em")
-    padrao_local = re.search(r"em ([A-Z0-9\s]+?)(?:\.|,|\*|$)", mensagem)
+    padrao_local = re.search(r"em\s+([\wÀ-ÿ\s&._*-]+?)(?=(?:[.,\-:]|\bpara\b|$))", mensagem, re.IGNORECASE)
     descricao = padrao_local.group(1).strip() if padrao_local else "Nao identificado"
     
     # Identifica (ou cria) categoria com base na descrição
@@ -146,21 +168,21 @@ def receber_notificacao():
             """, (registro["data"], registro["categoria"], registro["valor"], registro["descricao"], registro["usuario"]))
             conn.commit()
 
-            # Busca os 3 últimos registros
-            cur.execute("""
-                SELECT data, categoria, valor, descricao, usuario
-                FROM Gastos
-                ORDER BY rowid DESC LIMIT 3
-            """)
-            ultimos = cur.fetchall()
+        #     # Busca os 3 últimos registros
+        #     cur.execute("""
+        #         SELECT data, categoria, valor, descricao, usuario
+        #         FROM Gastos
+        #         ORDER BY rowid DESC LIMIT 3
+        #     """)
+        #     ultimos = cur.fetchall()
 
-        ultimos_json = [
-            {"data": u[0], "categoria": u[1], "valor": u[2], "descricao": u[3], "usuario": u[4]}
-            for u in ultimos
-        ]
+        # ultimos_json = [
+        #     {"data": u[0], "categoria": u[1], "valor": u[2], "descricao": u[3], "usuario": u[4]}
+        #     for u in ultimos
+        # ]
 
         print("Registro salvo:", registro, flush=True)
-        return jsonify({"status": "ok", "registro": registro, "ultimos": ultimos_json}), 200
+        return jsonify({"status": "ok"}), 200
 
     except Exception as e:
         print("Erro ao salvar:", e, flush=True)
@@ -170,6 +192,5 @@ def receber_notificacao():
 
 
 if __name__ == '__main__':
-    criar_ou_atualizar_tabela()
     app.run(host='0.0.0.0', port=8080)
     

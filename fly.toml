@@ -1,26 +1,57 @@
-# fly.toml app configuration file for gastos-api
 app = "gastos-api"
 primary_region = "gru"
 
 [build]
 
+[mounts]
+  source = "gastodb"
+  destination = "/data"
+  processes = ["app", "dash"] 
+
 [env]
   PORT = "8080"
+  DB_PATH = "/data/Gasto.db"
 
-[http_service]
+[processes]
+  app  = "gunicorn -b 0.0.0.0:8080 main:app"
+  dash = "streamlit run Dashboard.py --server.port 8081 --server.address 0.0.0.0"
+
+# -------- API (80/443 -> 8080)
+[[services]]
+  processes = ["app"]
+  protocol = "tcp"
   internal_port = 8080
-  force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
-  processes = ["app"]
+  [services.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+  [[services.ports]]
+    port = 443
+    handlers = ["tls","http"]
+
+# -------- DASH (8501 -> 8081)
+[[services]]
+  processes = ["dash"]
+  protocol = "tcp"
+  internal_port = 8081
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [services.concurrency]
+    type = "requests"
+    soft_limit = 10
+    hard_limit = 20
+  [[services.ports]]
+    port = 8501
+    handlers = ["tls","http"]
 
 [[vm]]
   memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
-
-
-[mounts]
-  source = "gastodb"
-  destination = "/data"
