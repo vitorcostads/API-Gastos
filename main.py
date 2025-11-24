@@ -127,7 +127,7 @@ def receber_notificacao():
     titulo = data.get ("titulo", "")
     mensagem = data.get("mensagem", "")   
     app_origem = data.get("app", "")
-    data_envio = data.get("data", datetime.now().isoformat()).split('.')[0].replace('T', ' ')
+    data_envio = data.get("data")
     
     if "Compra" not in titulo :
         print(f"Ignorado: título '{titulo}' não é uma compra aprovada.", flush=True)
