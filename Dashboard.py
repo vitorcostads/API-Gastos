@@ -72,6 +72,21 @@ def carregar_dados():
     df_gastos = pd.read_sql_query("SELECT * FROM Gastos", conn)
     df_cat = pd.read_sql_query("SELECT * FROM Categorias", conn)
     conn.close()
+
+    # para evitar erros na leitura da data
+    df_gastos["data"] = df_gastos["data"].astype(str).str.strip()
+
+    mask_date_only = df_gastos["data"].str.len() == 10  # "YYYY-MM-DD"
+    df_gastos.loc[mask_date_only, "data"] = (
+        df_gastos.loc[mask_date_only, "data"] + " 00:00:00"
+    )
+
+    df_gastos["data"] = pd.to_datetime(
+        df_gastos["data"],
+        format="%Y-%m-%d %H:%M:%S",
+        errors="coerce",
+    )
+
     return df_gastos, df_cat
 
 
@@ -95,12 +110,12 @@ if df_gastos.empty:
 df_gastos["data"] = pd.to_datetime(df_gastos["data"], errors="coerce")
 df_gastos["mes"] = df_gastos["data"].dt.to_period("M").astype(str)
 
+
 # ATUALIZAÇÃO MANUAL
 
 if st.sidebar.button("Atualizar agora"):
     st.cache_data.clear()
-    st.rerun() 
-
+    st.rerun()
 
 
 # FILTROS
@@ -123,6 +138,7 @@ categoria_sel = st.sidebar.selectbox("Categoria", categorias)
 meses = ["Todos"] + sorted(df_gastos["mes"].dropna().unique().tolist())
 mes_sel = st.sidebar.selectbox("Mês", meses)
 
+
 # APLICA FILTROS
 
 df_filtrado = df_gastos.copy()
@@ -132,7 +148,6 @@ if categoria_sel != "Todas":
     df_filtrado = df_filtrado[df_filtrado["categoria"] == categoria_sel]
 if mes_sel != "Todos":
     df_filtrado = df_filtrado[df_filtrado["mes"] == mes_sel]
-
 
 
 # MÉTRICAS RÁPIDAS
@@ -147,8 +162,9 @@ col3.metric("Total de compras", len(df_filtrado))
 
 st.subheader("Gastos por categoria")
 
-cat_sum = df_filtrado.groupby("categoria", as_index=False)["valor"].sum().sort_values("valor", ascending=False)
-
+cat_sum = df_filtrado.groupby("categoria", as_index=False)["valor"].sum().sort_values(
+    "valor", ascending=False
+)
 
 if tipo_grafico == "Barras":
     fig1 = px.bar(
@@ -157,43 +173,49 @@ if tipo_grafico == "Barras":
         y="valor",
         color="categoria",
         text=cat_sum["valor"].apply(lambda v: f"R$ {v:,.2f}"),
-        title="Distribuição de gastos"
+        title="Distribuição de gastos",
     )
-    
+
     fig1.update_layout(
         xaxis_title="Categoria",
         yaxis_title="Valor (R$)",
-        uniformtext_mode = 'hide',
-        uniformtext_minsize = 15,
-        showlegend=False)
-    
+        uniformtext_mode="hide",
+        uniformtext_minsize=15,
+        showlegend=False,
+    )
+
     fig1.update_traces(
         hovertemplate="Gasto total: R$ %{value:,.2f}<extra></extra>",
-        textposition = "inside",
+        textposition="inside",
         insidetextanchor="middle",
-        
-        )
+    )
 else:
     fig1 = px.pie(
         cat_sum,
         names="categoria",
         values="valor",
         title="Distribuição de gastos",
-        hole=0.5
-        
+        hole=0.5,
     )
     fig1.update_traces(
         hovertemplate="Gasto total: R$ %{value:,.2f}",
-        textinfo="percent+label", pull=[0.05]*len(cat_sum)
-        )
+        textinfo="percent+label",
+        pull=[0.05] * len(cat_sum),
+    )
 
-st.plotly_chart(fig1, use_container_width=True)
+
+st.plotly_chart(fig1)
 
 st.subheader("Gastos por mês")
 mes_sum = df_filtrado.groupby("mes", as_index=False)["valor"].sum()
 fig2 = px.line(mes_sum, x="mes", y="valor", title="Evolução mensal")
-st.plotly_chart(fig2, use_container_width=True)
+
+
+st.plotly_chart(fig2)
+
 
 st.subheader("Histórico de compras")
-st.dataframe(df_filtrado.sort_values("data", ascending=False))
+df_hist = df_gastos.copy()
+df_hist = df_hist.drop(columns=["mes"], errors="ignore")
 
+st.dataframe(df_hist, hide_index=True)
